@@ -6,11 +6,14 @@
 ## Resumo Executivo
 
 A LGD Gaming (roster atual: Yuma, Wisper, TaiLung, Thiolicor, KJ) não constrói
-vantagem no early game — nos primeiros 10 minutos, sua economia é apenas ~9%
-superior à média de suas próprias derrotas. A vantagem real se forma no
-**meio de jogo**, onde a diferença de recursos entre vitórias e derrotas
-cresce para 30-43%. Isso indica que o time vence através de decisões de
-teamfight e controle de mapa no mid game, não por pressão antecipada.
+uma vantagem grande no early game — nos primeiros 10 minutos, sua economia é
+apenas ~9% superior à média de suas próprias derrotas. Essa diferença cresce
+de forma gradual ao longo da partida, chegando a ~13% por volta dos 27-30
+minutos e se mantendo nessa faixa até o fim das partidas registradas. É um
+crescimento consistente, não um salto concentrado em uma fase específica —
+o que enfraquece a hipótese de que o time "vence no mid game": os dados
+sustentam apenas que a vantagem econômica se acumula aos poucos ao longo de
+toda a partida, sem indicar em qual fase as decisões mais decisivas acontecem.
 
 O time tem hero pool concentrado em poucos jogadores-chave: Hoodwink
 (Thiolicor, 17 partidas, 71% winrate) e Bane (KJ, 16 partidas, 69% winrate)
@@ -26,7 +29,7 @@ acima dos demais.
 
 | Padrão | Evidência | Confiabilidade |
 |---|---|---|
-| Vantagem econômica é construída no meio de jogo, não no early | Diferença de 9% aos 10min vs. 30-43% no final (62 partidas) | Alta |
+| Vantagem econômica cresce de forma gradual ao longo da partida | Diferença de 9% aos 10min, subindo a ~13% por volta dos 27-30min e estável até o fim (62 partidas) | Média (crescimento gradual, sem fase de virada clara) |
 | Thiolicor prioriza Hoodwink | 17 partidas, 71% winrate — maior volume do dataset | Alta |
 | KJ prioriza Bane | 16 partidas, 69% winrate | Alta |
 | TaiLung é ameaça reconhecida em Huskar | 4 partidas (100% winrate) + confirmado como herói mais banido contra a LGD (53x) | Alta (evidência cruzada) |
