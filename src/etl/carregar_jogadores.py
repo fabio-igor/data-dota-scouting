@@ -1,6 +1,10 @@
 import json
 import os
 import sqlite3
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.config.roster import todos_ids_historicos
 
 conexao = sqlite3.connect("data/processed/lgd_scouting.db")
 cursor = conexao.cursor()
@@ -19,8 +23,9 @@ cursor.execute("""
     )
 """)
 
-# IDs dos jogadores da LGD, para filtrar dentro de cada partida
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
+# IDs de todos que já passaram pelo roster da LGD (histórico completo),
+# vindos de src/config/roster.py — não mais hardcoded aqui.
+jogadores_lgd = todos_ids_historicos()
 
 pasta_detalhes = "data/raw/match_details"
 total_inseridos = 0

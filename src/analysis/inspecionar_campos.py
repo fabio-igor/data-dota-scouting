@@ -1,9 +1,15 @@
 import json
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.config.roster import todos_ids_historicos
+
 
 with open("data/raw/match_details/8927232410.json", "r", encoding="utf-8") as arquivo:
     detalhes = json.load(arquivo)
 
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
+jogadores_lgd = todos_ids_historicos()  # importado de src/config/roster.py
 nomes = {
     177203952: "Yuma",
     292921272: "Wisper",

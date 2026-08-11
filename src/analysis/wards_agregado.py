@@ -1,15 +1,14 @@
+import os
 import sqlite3
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.config.roster import ROSTER
 
 conexao = sqlite3.connect("data/processed/lgd_scouting.db")
 cursor = conexao.cursor()
 
-nomes = {
-    177203952: "Yuma",
-    292921272: "Wisper",
-    1026694469: "TaiLung",
-    105045291: "Thiolicor",
-    81306398: "KJ",
-}
+nomes = {j["account_id"]: j["nome"] for j in ROSTER}
 
 cursor.execute("""
     SELECT account_id, AVG(total_obs_wards) as media_wards, SUM(total_obs_wards) as total_wards

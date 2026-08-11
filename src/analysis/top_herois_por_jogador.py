@@ -1,16 +1,15 @@
+import os
 import sqlite3
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.config.roster import ROSTER
 
 conexao = sqlite3.connect("data/processed/lgd_scouting.db")
 cursor = conexao.cursor()
 
-# Nomes dos jogadores, pra exibir de forma legível (não temos isso salvo em tabela ainda)
-nomes_jogadores = {
-    177203952: "Yuma",
-    292921272: "Wisper",
-    1026694469: "TaiLung",
-    105045291: "Thiolicor",
-    81306398: "KJ"
-}
+# Nomes dos jogadores, vindos de src/config/roster.py
+nomes_jogadores = {j["account_id"]: j["nome"] for j in ROSTER}
 
 for account_id, nome in nomes_jogadores.items():
     cursor.execute("""
