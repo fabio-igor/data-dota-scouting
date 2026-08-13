@@ -1,14 +1,16 @@
 import json
 import os
-import sqlite3
 
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
+import duckdb
 
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS jogadores_partida (
-        match_id INTEGER,
-        account_id INTEGER,
+conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
+
+conexao.execute("DROP TABLE IF EXISTS jogadores_partida")
+conexao.execute("""
+    CREATE TABLE jogadores_partida (
+        match_id BIGINT,
+        account_id BIGINT,
+        time_id BIGINT,
         hero_id INTEGER,
         kills INTEGER,
         deaths INTEGER,
@@ -19,8 +21,15 @@ cursor.execute("""
     )
 """)
 
-# IDs dos jogadores da LGD, para filtrar dentro de cada partida
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
+# time_id de cada partida (radiant/dire), pra combinar com isRadiant de cada
+# jogador — assim sabemos de qual time é cada jogador sem depender de uma
+# lista fixa de roster (funciona pra qualquer jogador, de qualquer time).
+times_por_partida = {
+    row[0]: (row[1], row[2])
+    for row in conexao.execute(
+        "SELECT match_id, radiant_team_id, dire_team_id FROM partidas"
+    ).fetchall()
+}
 
 pasta_detalhes = "data/raw/match_details"
 total_inseridos = 0
@@ -32,23 +41,27 @@ for nome_arquivo in os.listdir(pasta_detalhes):
         detalhes = json.load(arquivo)
 
     match_id = detalhes["match_id"]
+    if match_id not in times_por_partida:
+        continue
+    radiant_team_id, dire_team_id = times_por_partida[match_id]
 
     for jogador in detalhes["players"]:
         account_id = jogador.get("account_id")
+        if account_id is None:
+            continue  # perfil privado na Steam, API não devolve o account_id
 
-        # Só nos interessam os 5 jogadores da LGD, não os adversários
-        if account_id not in jogadores_lgd:
-            continue
+        time_id = radiant_team_id if jogador["isRadiant"] else dire_team_id
 
-        cursor.execute(
+        conexao.execute(
             """
             INSERT OR REPLACE INTO jogadores_partida
-            (match_id, account_id, hero_id, kills, deaths, assists, gpm, xpm)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (match_id, account_id, time_id, hero_id, kills, deaths, assists, gpm, xpm)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 match_id,
                 account_id,
+                time_id,
                 jogador["hero_id"],
                 jogador["kills"],
                 jogador["deaths"],
@@ -59,7 +72,6 @@ for nome_arquivo in os.listdir(pasta_detalhes):
         )
         total_inseridos += 1
 
-conexao.commit()
 conexao.close()
 
 print(f"{total_inseridos} registros inseridos em 'jogadores_partida'.")

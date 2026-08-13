@@ -1,79 +1,53 @@
-import json
-import os
-import sqlite3
-
-import pandas as pd
+import duckdb
 import streamlit as st
+
+LGD_TEAM_ID = 10150538
 
 st.set_page_config(page_title="Economia — LGD", layout="wide")
 st.title("Economia")
 
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
 
-cursor.execute("SELECT match_id, lgd_radiant = radiant_win FROM partidas")
-resultado_por_partida = {
-    match_id: bool(vitoria) for match_id, vitoria in cursor.fetchall()
-}
-conexao.close()
+@st.cache_data
+def carregar_curva_economia():
+    conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
 
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
-pasta_detalhes = "data/raw/match_details"
+    # Soma dos jogadores da LGD (filtrado via jogadores_partida.time_id —
+    # necessário desde que a tabela passou a ter os dois times por partida,
+    # não só a LGD), por minuto, separado por vitória/derrota.
+    query = """
+        SELECT
+            epm.minuto AS Minuto,
+            (jp.time_id = p.radiant_team_id AND p.radiant_win)
+              OR (jp.time_id = p.dire_team_id AND NOT p.radiant_win) AS vitoria,
+            SUM(epm.gold) AS gold_time
+        FROM economia_por_minuto epm
+        JOIN jogadores_partida jp
+          ON epm.match_id = jp.match_id AND epm.account_id = jp.account_id
+        JOIN partidas p ON epm.match_id = p.match_id
+        WHERE epm.minuto <= 40 AND jp.time_id = ?
+        GROUP BY epm.minuto, p.match_id, vitoria
+    """
+    df_bruto = conexao.execute(query, [LGD_TEAM_ID]).fetchdf()
+    conexao.close()
 
-curvas_vitoria = []
-curvas_derrota = []
-
-for nome_arquivo in os.listdir(pasta_detalhes):
-    caminho = os.path.join(pasta_detalhes, nome_arquivo)
-    with open(caminho, "r", encoding="utf-8") as arquivo:
-        detalhes = json.load(arquivo)
-
-    match_id = detalhes["match_id"]
-    vitoria = resultado_por_partida.get(match_id)
-
-    soma_gold_por_minuto = None
-    for jogador in detalhes["players"]:
-        if jogador.get("account_id") not in jogadores_lgd:
-            continue
-        gold_t = jogador.get("gold_t")
-        if not gold_t:
-            continue
-        if soma_gold_por_minuto is None:
-            soma_gold_por_minuto = gold_t.copy()
-        else:
-            for i in range(min(len(soma_gold_por_minuto), len(gold_t))):
-                soma_gold_por_minuto[i] += gold_t[i]
-
-    if soma_gold_por_minuto:
-        alvo = curvas_vitoria if vitoria else curvas_derrota
-        alvo.append(soma_gold_por_minuto[:40])
+    medias = (
+        df_bruto.groupby(["Minuto", "vitoria"])["gold_time"]
+        .mean()
+        .unstack("vitoria")
+        .rename(columns={True: "Vitórias", False: "Derrotas"})
+    )
+    return medias
 
 
-def media_por_minuto(curvas):
-    max_min = max(len(c) for c in curvas)
-    return [
-        sum(c[m] for c in curvas if m < len(c)) / len([c for c in curvas if m < len(c)])
-        for m in range(max_min)
-    ]
-
-
-media_vitoria = media_por_minuto(curvas_vitoria)
-media_derrota = media_por_minuto(curvas_derrota)
-
-df = pd.DataFrame(
-    {
-        "Minuto": range(len(media_vitoria)),
-        "Vitórias": media_vitoria,
-        "Derrotas": media_derrota[: len(media_vitoria)],
-    }
-).set_index("Minuto")
+df = carregar_curva_economia()
 
 st.subheader("Economia do time (soma dos 5 jogadores) — Vitórias vs. Derrotas")
-st.line_chart(df, color=["#2ecc71", "#e74c3c"])
+st.line_chart(df, color=["#e74c3c", "#2ecc71"])
 
 st.markdown("""
 **Leitura**: aos 10 minutos, a diferença entre vitórias e derrotas é de apenas ~9%.
-No fim da partida, essa diferença cresce para 30-43%. Isso indica que a vantagem
-econômica da LGD é **consequência** de decisões no meio de jogo — não uma
-vantagem construída já no early game.
+Ela cresce de forma gradual ao longo da partida, chegando a ~13% por volta dos
+27-30 minutos e permanecendo nessa faixa até o fim. É um crescimento consistente,
+não um salto concentrado em uma fase — os dados não indicam claramente em qual
+momento do jogo a vantagem da LGD é decidida.
 """)
