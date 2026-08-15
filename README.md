@@ -29,10 +29,11 @@ correlação com causalidade.
 
 ## 🔍 Principais descobertas
 
-- **A vantagem econômica da LGD é consequência, não causa**: a diferença de
-  recursos entre vitórias e derrotas é pequena aos 10 minutos (~9%) e cresce
-  para 30-43% até o final da partida — evidência de que o time vence por
-  decisões de meio de jogo, não por pressão early.
+- **A vantagem econômica da LGD cresce de forma gradual, sem fase de virada
+  clara**: a diferença de recursos entre vitórias e derrotas é pequena aos 10
+  minutos (~9%) e sobe aos poucos até ~13% por volta dos 27-30 minutos,
+  mantendo-se nessa faixa até o fim das partidas registradas. Os dados não
+  indicam um salto concentrado no meio de jogo.
 - **Hero pool concentrado**: Hoodwink (Thiolicor, 17 partidas, 71% winrate) e
   Bane (KJ, 16 partidas, 69% winrate) são as combinações mais consistentes
   do roster.

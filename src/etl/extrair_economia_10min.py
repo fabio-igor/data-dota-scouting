@@ -1,21 +1,21 @@
 import json
 import os
-import sqlite3
 
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
+import duckdb
 
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS economia_10min (
-        match_id INTEGER,
-        account_id INTEGER,
+conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
+
+conexao.execute("DROP TABLE IF EXISTS economia_10min")
+conexao.execute("""
+    CREATE TABLE economia_10min (
+        match_id BIGINT,
+        account_id BIGINT,
         gold_aos_10min INTEGER,
         xp_aos_10min INTEGER,
         PRIMARY KEY (match_id, account_id)
     )
 """)
 
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
 pasta_detalhes = "data/raw/match_details"
 total_inseridos = 0
 sem_dado_10min = 0
@@ -30,18 +30,17 @@ for nome_arquivo in os.listdir(pasta_detalhes):
 
     for jogador in detalhes["players"]:
         account_id = jogador.get("account_id")
-        if account_id not in jogadores_lgd:
+        if account_id is None:
             continue
 
         gold_t = jogador.get("gold_t")
         xp_t = jogador.get("xp_t")
 
-        # Confere se a partida durou pelo menos 10 minutos de dado registrado
         if not gold_t or len(gold_t) <= 10:
             sem_dado_10min += 1
             continue
 
-        cursor.execute(
+        conexao.execute(
             """
             INSERT OR REPLACE INTO economia_10min
             (match_id, account_id, gold_aos_10min, xp_aos_10min)
@@ -51,7 +50,6 @@ for nome_arquivo in os.listdir(pasta_detalhes):
         )
         total_inseridos += 1
 
-conexao.commit()
 conexao.close()
 
 print(f"{total_inseridos} registros inseridos.")

@@ -1,56 +1,113 @@
+"""
+Cria/atualiza as tabelas 'times' e 'partidas' no banco multi-time (DuckDB).
+
+Lê TODAS as listas de partidas em data/raw/times/*.json (uma por time
+coletado, nomeada {team_id}_matches.json — geradas por coletar_time.py).
+Se dois times que você rastreia jogaram entre si, a partida aparece nas
+duas listas; o INSERT OR REPLACE (chave = match_id) resolve a duplicata
+sem problema, mantendo só uma linha.
+"""
+
+import glob
 import json
-import sqlite3
+import os
 
-# Conecta (cria o arquivo .db se não existir ainda)
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
+import duckdb
 
-# Cria a tabela, se ainda não existir
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS partidas (
-        match_id INTEGER PRIMARY KEY,
-        radiant_win BOOLEAN,
-        lgd_radiant BOOLEAN,
-        lgd_score INTEGER,
-        adversario_score INTEGER,
-        duration INTEGER,
-        start_time INTEGER,
-        league_name TEXT,
-        opposing_team_name TEXT
+conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
+
+conexao.execute("""
+    CREATE TABLE IF NOT EXISTS times (
+        time_id BIGINT PRIMARY KEY,
+        nome VARCHAR,
+        tier VARCHAR,
+        regiao VARCHAR
     )
 """)
 
-# Carrega os dados brutos que já coletamos
-with open("data/raw/lgd_team_matches.json", "r", encoding="utf-8") as arquivo:
-    partidas = json.load(arquivo)
+conexao.execute("DROP TABLE IF EXISTS partidas")
+conexao.execute("""
+    CREATE TABLE partidas (
+        match_id BIGINT PRIMARY KEY,
+        radiant_team_id BIGINT,
+        dire_team_id BIGINT,
+        radiant_win BOOLEAN,
+        radiant_score INTEGER,
+        dire_score INTEGER,
+        duration INTEGER,
+        start_time BIGINT,
+        league_name VARCHAR
+    )
+""")
 
-# Insere cada partida na tabela
-for p in partidas:
-    lgd_venceu = p["radiant_win"] == p["radiant"]  # se LGD estava no lado que venceu
-    lgd_score = p["radiant_score"] if p["radiant"] else p["dire_score"]
-    adversario_score = p["dire_score"] if p["radiant"] else p["radiant_score"]
+adversarios_vistos = {}
+total_partidas_processadas = 0
 
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO partidas
-        (match_id, radiant_win, lgd_radiant, lgd_score, adversario_score,
-         duration, start_time, league_name, opposing_team_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        (
-            p["match_id"],
-            p["radiant_win"],
-            p["radiant"],
-            lgd_score,
-            adversario_score,
-            p["duration"],
-            p["start_time"],
-            p.get("league_name"),
-            p.get("opposing_team_name"),
-        ),
+for caminho_lista in glob.glob("data/raw/times/*_matches.json"):
+    nome_arquivo = os.path.basename(caminho_lista)
+    team_id_coletado = int(nome_arquivo.replace("_matches.json", ""))
+
+    # Se ainda não sabemos o nome desse time coletado, deixa NULL por
+    # enquanto — o nome real vem de opposing_team_name quando esse time
+    # aparecer como adversário em outra lista. Se nunca aparecer, dá pra
+    # completar manualmente.
+    conexao.execute(
+        "INSERT INTO times VALUES (?, NULL, NULL, NULL) ON CONFLICT DO NOTHING",
+        [team_id_coletado],
     )
 
-conexao.commit()
+    with open(caminho_lista, "r", encoding="utf-8") as arquivo:
+        partidas = json.load(arquivo)
+
+    for p in partidas:
+        eu_radiant = p["radiant"]
+        adversario_id = p.get("opposing_team_id")
+        adversario_nome = p.get("opposing_team_name")
+
+        if adversario_id and adversario_id not in adversarios_vistos:
+            adversarios_vistos[adversario_id] = adversario_nome
+
+        radiant_team_id = team_id_coletado if eu_radiant else adversario_id
+        dire_team_id = adversario_id if eu_radiant else team_id_coletado
+
+        conexao.execute(
+            """
+            INSERT OR REPLACE INTO partidas
+            (match_id, radiant_team_id, dire_team_id, radiant_win, radiant_score,
+             dire_score, duration, start_time, league_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                p["match_id"],
+                radiant_team_id,
+                dire_team_id,
+                p["radiant_win"],
+                p["radiant_score"],
+                p["dire_score"],
+                p["duration"],
+                p["start_time"],
+                p.get("league_name"),
+            ),
+        )
+        total_partidas_processadas += 1
+
+# Popula/atualiza 'times' com nome real de cada adversário visto
+for adversario_id, nome in adversarios_vistos.items():
+    conexao.execute(
+        "INSERT INTO times VALUES (?, ?, NULL, NULL) ON CONFLICT (time_id) DO UPDATE SET nome = EXCLUDED.nome",
+        [adversario_id, nome],
+    )
+
+# Nome da LGD (nosso time principal) — não vem como "adversário" de
+# ninguém na própria lista dele, então garantimos aqui.
+conexao.execute(
+    "INSERT INTO times VALUES (10150538, 'LGD Gaming', '1', 'SA') ON CONFLICT (time_id) DO UPDATE SET nome = 'LGD Gaming'"
+)
+
+total_partidas = conexao.execute("SELECT COUNT(*) FROM partidas").fetchone()[0]
+total_times = conexao.execute("SELECT COUNT(*) FROM times").fetchone()[0]
 conexao.close()
 
-print(f"{len(partidas)} partidas inseridas na tabela 'partidas'.")
+print(f"{total_partidas_processadas} linhas processadas de {len(glob.glob('data/raw/times/*_matches.json'))} lista(s) de time.")
+print(f"{total_partidas} partidas únicas na tabela 'partidas'.")
+print(f"{total_times} times na tabela 'times'.")

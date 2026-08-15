@@ -3,6 +3,11 @@ import os
 import sqlite3
 
 import matplotlib.pyplot as plt
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.config.roster import todos_ids_historicos
+
 
 conexao = sqlite3.connect("data/processed/lgd_scouting.db")
 cursor = conexao.cursor()
@@ -12,7 +17,7 @@ resultado_por_partida = {
     match_id: bool(vitoria) for match_id, vitoria in cursor.fetchall()
 }
 
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
+jogadores_lgd = todos_ids_historicos()  # importado de src/config/roster.py
 pasta_detalhes = "data/raw/match_details"
 
 curvas_vitoria = []

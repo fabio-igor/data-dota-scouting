@@ -1,25 +1,28 @@
 import json
 import os
-import sqlite3
 
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
+import duckdb
 
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS picks_bans (
-        match_id INTEGER,
+conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
+
+conexao.execute("DROP TABLE IF EXISTS picks_bans")
+conexao.execute("""
+    CREATE TABLE picks_bans (
+        match_id BIGINT,
         ordem INTEGER,
         hero_id INTEGER,
         is_pick BOOLEAN,
-        time_lgd BOOLEAN,
+        time_id BIGINT,
         PRIMARY KEY (match_id, ordem)
     )
 """)
 
-# Monta um dicionário match_id -> lgd_radiant, consultando a tabela que já temos
-cursor.execute("SELECT match_id, lgd_radiant FROM partidas")
-mapa_lado_lgd = {
-    match_id: bool(lgd_radiant) for match_id, lgd_radiant in cursor.fetchall()
+# time_id de cada partida (radiant/dire) — mesma lógica de carregar_jogadores.py
+times_por_partida = {
+    row[0]: (row[1], row[2])
+    for row in conexao.execute(
+        "SELECT match_id, radiant_team_id, dire_team_id FROM partidas"
+    ).fetchall()
 }
 
 pasta_detalhes = "data/raw/match_details"
@@ -35,28 +38,26 @@ for nome_arquivo in os.listdir(pasta_detalhes):
     match_id = detalhes["match_id"]
     picks_bans = detalhes.get("picks_bans")
 
-    if not picks_bans:
+    if not picks_bans or match_id not in times_por_partida:
         partidas_sem_draft += 1
         continue
 
-    # Busca o lado da LGD nessa partida a partir do dicionário, não do arquivo JSON
-    lgd_radiant = mapa_lado_lgd.get(match_id)
+    radiant_team_id, dire_team_id = times_por_partida[match_id]
 
     for evento in picks_bans:
-        evento_radiant = evento["team"] == 0
-        time_lgd = (evento_radiant == lgd_radiant) if lgd_radiant is not None else None
+        # No formato da OpenDota, team=0 é o lado Radiant, team=1 é Dire
+        time_id = radiant_team_id if evento["team"] == 0 else dire_team_id
 
-        cursor.execute(
+        conexao.execute(
             """
             INSERT OR REPLACE INTO picks_bans
-            (match_id, ordem, hero_id, is_pick, time_lgd)
+            (match_id, ordem, hero_id, is_pick, time_id)
             VALUES (?, ?, ?, ?, ?)
         """,
-            (match_id, evento["order"], evento["hero_id"], evento["is_pick"], time_lgd),
+            (match_id, evento["order"], evento["hero_id"], evento["is_pick"], time_id),
         )
         total_inseridos += 1
 
-conexao.commit()
 conexao.close()
 
 print(f"{total_inseridos} eventos de draft inseridos.")

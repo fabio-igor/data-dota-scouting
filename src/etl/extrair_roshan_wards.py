@@ -1,29 +1,28 @@
 import json
 import os
-import sqlite3
 
-conexao = sqlite3.connect("data/processed/lgd_scouting.db")
-cursor = conexao.cursor()
+import duckdb
 
-# Recria a tabela incluindo o time responsável
-cursor.execute("DROP TABLE IF EXISTS roshan_kills")
-cursor.execute("""
+conexao = duckdb.connect("data/processed/scouting_platform.duckdb")
+
+conexao.execute("DROP TABLE IF EXISTS roshan_kills")
+conexao.execute("""
     CREATE TABLE roshan_kills (
-        match_id INTEGER,
+        match_id BIGINT,
         ordem INTEGER,
         tempo_segundos INTEGER,
-        time_lgd BOOLEAN,
+        time_id BIGINT,
         PRIMARY KEY (match_id, ordem)
     )
 """)
 
-# Reaproveita o mapa match_id -> lgd_radiant, já usado na Etapa 5
-cursor.execute("SELECT match_id, lgd_radiant FROM partidas")
-mapa_lado_lgd = {
-    match_id: bool(lgd_radiant) for match_id, lgd_radiant in cursor.fetchall()
+times_por_partida = {
+    row[0]: (row[1], row[2])
+    for row in conexao.execute(
+        "SELECT match_id, radiant_team_id, dire_team_id FROM partidas"
+    ).fetchall()
 }
 
-jogadores_lgd = {177203952, 292921272, 1026694469, 105045291, 81306398}
 pasta_detalhes = "data/raw/match_details"
 total_inseridos = 0
 
@@ -33,7 +32,9 @@ for nome_arquivo in os.listdir(pasta_detalhes):
         detalhes = json.load(arquivo)
 
     match_id = detalhes["match_id"]
-    lgd_radiant = mapa_lado_lgd.get(match_id)
+    if match_id not in times_por_partida:
+        continue
+    radiant_team_id, dire_team_id = times_por_partida[match_id]
 
     eventos_roshan = [
         e
@@ -41,31 +42,28 @@ for nome_arquivo in os.listdir(pasta_detalhes):
         if e["type"] == "CHAT_MESSAGE_ROSHAN_KILL"
     ]
     for ordem, evento in enumerate(eventos_roshan):
-        # team: 2 = radiant, 3 = dire
-        evento_radiant = evento["team"] == 2
-        time_lgd = (evento_radiant == lgd_radiant) if lgd_radiant is not None else None
+        # Nos objectives, team: 2 = radiant, 3 = dire (convenção diferente
+        # da usada em picks_bans, que é 0/1 — atenção ao portar essa lógica)
+        time_id = radiant_team_id if evento["team"] == 2 else dire_team_id
 
-        cursor.execute(
+        conexao.execute(
             """
-            INSERT OR REPLACE INTO roshan_kills (match_id, ordem, tempo_segundos, time_lgd)
+            INSERT OR REPLACE INTO roshan_kills (match_id, ordem, tempo_segundos, time_id)
             VALUES (?, ?, ?, ?)
         """,
-            (match_id, ordem, evento["time"], time_lgd),
+            (match_id, ordem, evento["time"], time_id),
         )
         total_inseridos += 1
 
-conexao.commit()
-
-# Já aproveita pra consultar o resultado agregado
-cursor.execute("""
-    SELECT time_lgd, COUNT(*) as total, AVG(tempo_segundos) as tempo_medio
-    FROM roshan_kills
-    GROUP BY time_lgd
-""")
 print(f"\n{total_inseridos} eventos de Roshan processados.\n")
-for time_lgd, total, tempo_medio in cursor.fetchall():
-    quem = "LGD" if time_lgd else "Adversário"
+resultado = conexao.execute("""
+    SELECT time_id, COUNT(*) as total, AVG(tempo_segundos) as tempo_medio
+    FROM roshan_kills
+    GROUP BY time_id
+    ORDER BY total DESC
+""").fetchall()
+for time_id, total, tempo_medio in resultado:
     minutos = tempo_medio / 60
-    print(f"  {quem}: {total} Roshans, tempo médio {minutos:.1f} min")
+    print(f"  time_id {time_id}: {total} Roshans, tempo médio {minutos:.1f} min")
 
 conexao.close()
