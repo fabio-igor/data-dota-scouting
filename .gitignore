@@ -1,4 +1,6 @@
 .venv/
 data/raw/
+data/processed/*.duckdb
+data/processed/*.db
 *.env
 __pycache__/
