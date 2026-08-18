@@ -17,10 +17,20 @@ load_dotenv()
 MODELO = "openai/gpt-oss-20b:free"
 CAMINHO_BANCO = "data/processed/scouting_platform.duckdb"
 
-cliente = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-)
+_cliente = None
+
+
+def obter_cliente():
+    """Cria o cliente da OpenAI só na primeira vez que for usado, não na
+    importação do módulo — assim endpoints que não usam IA continuam
+    funcionando mesmo se a chave estiver ausente ou inválida."""
+    global _cliente
+    if _cliente is None:
+        _cliente = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+    return _cliente
 
 
 def descrever_schema():
@@ -52,7 +62,7 @@ Contexto importante:
 
 Responda APENAS com a query SQL, sem explicação, sem markdown, sem ```. Só a query, pronta pra rodar."""
 
-    resposta = cliente.chat.completions.create(
+    resposta = obter_cliente().chat.completions.create(
         model=MODELO,
         messages=[
             {"role": "system", "content": prompt_sistema},
@@ -83,7 +93,7 @@ Resultado (primeiras linhas):
 
 Responda a pergunta original em português, de forma natural e direta, baseado só nesse resultado."""
 
-    resposta = cliente.chat.completions.create(
+    resposta = obter_cliente().chat.completions.create(
         model=MODELO,
         messages=[{"role": "user", "content": prompt}],
     )
