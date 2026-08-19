@@ -40,20 +40,30 @@ def raiz():
 
 @app.get("/times")
 def listar_times(busca: str = ""):
-    """Lista times. Opcionalmente filtra por nome (busca parcial)."""
+    """Lista times, ordenados por volume de partidas (o time 'de verdade'
+    sobe ao topo quando há nomes duplicados/parecidos na base)."""
     conexao = duckdb.connect(CAMINHO_BANCO, read_only=True)
-    if busca:
-        resultado = conexao.execute(
-            "SELECT time_id, nome, tier, regiao FROM times WHERE nome ILIKE ? ORDER BY nome",
-            [f"%{busca}%"],
-        ).fetchall()
-    else:
-        resultado = conexao.execute(
-            "SELECT time_id, nome, tier, regiao FROM times ORDER BY nome"
-        ).fetchall()
+    query = """
+        SELECT t.time_id, t.nome, t.tier, t.regiao,
+               COUNT(p.match_id) as total_partidas
+        FROM times t
+        LEFT JOIN partidas p
+          ON p.radiant_team_id = t.time_id OR p.dire_team_id = t.time_id
+        WHERE (? = '' OR t.nome ILIKE '%' || ? || '%')
+        GROUP BY t.time_id, t.nome, t.tier, t.regiao
+        ORDER BY total_partidas DESC
+    """
+    resultado = conexao.execute(query, [busca, busca]).fetchall()
     conexao.close()
     return [
-        {"time_id": r[0], "nome": r[1], "tier": r[2], "regiao": r[3]} for r in resultado
+        {
+            "time_id": r[0],
+            "nome": r[1],
+            "tier": r[2],
+            "regiao": r[3],
+            "total_partidas": r[4],
+        }
+        for r in resultado
     ]
 
 

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Dota Scouting</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #0e1117; color: #e6e6e6; }
+  h1 { font-size: 1.5rem; }
+  input, button { font-size: 1rem; padding: 8px; margin: 4px 0; }
+  input[type=text] { width: 100%; box-sizing: border-box; background: #1c1f26; border: 1px solid #333; color: #fff; border-radius: 4px; }
+  button { background: #3a7bd5; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 8px 16px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .resultado-time { background: #1c1f26; padding: 12px; border-radius: 6px; margin-top: 8px; cursor: pointer; }
+  .resultado-time:hover { background: #262a33; }
+  .card-stats { background: #1c1f26; padding: 16px; border-radius: 6px; margin-top: 12px; }
+  .resposta-ia { background: #1c1f26; padding: 16px; border-radius: 6px; margin-top: 12px; white-space: pre-wrap; }
+  .carregando { opacity: 0.6; font-style: italic; }
+  section { margin-top: 32px; }
+</style>
+</head>
+<body>
+
+<h1>🎮 Dota Scouting</h1>
+
+<section>
+  <h2>Buscar time</h2>
+  <input type="text" id="busca-time" placeholder="Digite o nome de um time (ex: LGD, Aurora...)">
+  <div id="lista-times"></div>
+  <div id="detalhe-time"></div>
+</section>
+
+<section>
+  <h2>Perguntar pra IA</h2>
+  <input type="text" id="pergunta" placeholder="Ex: quantas partidas a LGD venceu?">
+  <button id="btn-perguntar" onclick="perguntar()">Perguntar</button>
+  <div id="resposta-ia"></div>
+</section>
+
+<script>
+const API_URL = "http://localhost:8000";
+
+const inputBusca = document.getElementById("busca-time");
+let timeoutBusca = null;
+
+inputBusca.addEventListener("input", () => {
+  clearTimeout(timeoutBusca);
+  timeoutBusca = setTimeout(buscarTimes, 400);
+});
+
+async function buscarTimes() {
+  const termo = inputBusca.value.trim();
+  const divLista = document.getElementById("lista-times");
+  document.getElementById("detalhe-time").innerHTML = "";
+
+  if (!termo) {
+    divLista.innerHTML = "";
+    return;
+  }
+
+  divLista.innerHTML = '<p class="carregando">Buscando...</p>';
+  try {
+    const resp = await fetch(`${API_URL}/times?busca=${encodeURIComponent(termo)}`);
+    const times = await resp.json();
+
+    if (times.length === 0) {
+      divLista.innerHTML = "<p>Nenhum time encontrado.</p>";
+      return;
+    }
+
+    divLista.innerHTML = times
+      .slice(0, 10)
+            .map(t => `<div class="resultado-time" onclick="mostrarDetalhe(${t.time_id})">${t.nome} <span style="opacity:0.6">(${t.total_partidas} partidas)</span></div>`)
+      .join("");
+  } catch (erro) {
+    divLista.innerHTML = `<p>Erro ao buscar: ${erro.message}. A API está rodando?</p>`;
+  }
+}
+
+async function mostrarDetalhe(timeId) {
+  const div = document.getElementById("detalhe-time");
+  div.innerHTML = '<p class="carregando">Carregando...</p>';
+  try {
+    const resp = await fetch(`${API_URL}/times/${timeId}`);
+    const t = await resp.json();
+    const winrate = t.total_partidas > 0 ? ((t.vitorias / t.total_partidas) * 100).toFixed(0) : 0;
+    div.innerHTML = `
+      <div class="card-stats">
+        <h3>${t.nome}</h3>
+        <p>Partidas: ${t.total_partidas} | Vitórias: ${t.vitorias} | Winrate: ${winrate}%</p>
+      </div>`;
+  } catch (erro) {
+    div.innerHTML = `<p>Erro: ${erro.message}</p>`;
+  }
+}
+
+async function perguntar() {
+  const pergunta = document.getElementById("pergunta").value.trim();
+  const div = document.getElementById("resposta-ia");
+  const botao = document.getElementById("btn-perguntar");
+
+  if (!pergunta) return;
+
+  botao.disabled = true;
+  div.innerHTML = '<p class="carregando">Pensando... (pode levar alguns segundos)</p>';
+
+  try {
+    const controlador = new AbortController();
+    const timeoutId = setTimeout(() => controlador.abort(), 90000); // 90s máximo
+
+    const resp = await fetch(`${API_URL}/perguntar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pergunta }),
+      signal: controlador.signal,
+    });
+    clearTimeout(timeoutId);
+    const dados = await resp.json();
+
+    if (!resp.ok) {
+      div.innerHTML = `<div class="resposta-ia">Erro: ${dados.detail}</div>`;
+    } else {
+      div.innerHTML = `<div class="resposta-ia">${dados.resposta}</div>`;
+    }
+  } catch (erro) {
+    if (erro.name === "AbortError") {
+      div.innerHTML = `<div class="resposta-ia">O modelo demorou demais pra responder (mais de 45s). O modelo gratuito às vezes fica sobrecarregado — tenta de novo em alguns instantes.</div>`;
+    } else {
+      div.innerHTML = `<div class="resposta-ia">Erro ao conectar: ${erro.message}</div>`;
+    }
+  } finally {
+    botao.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
